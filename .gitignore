@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables — NEVER commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Streamlit secrets — contains API keys
+.streamlit/secrets.toml
+
+# Reports & benchmark output
+reports/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Model cache (large files)
+*.bin
+*.pt
+*.ckpt
+models/
+
+# FAISS index dumps (regenerated at runtime)
+*.faiss
+*.index
+
+# Logs
+*.log
+logs/
