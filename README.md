@@ -1,4 +1,4 @@
-#Neuro-Symbolic RAG — Interactive Narrative Framework
+# 📖 Neuro-Symbolic RAG – Interactive Narrative Framework
 
 > A local-first, consistency-enforcing storytelling engine that combines **Hybrid RAG retrieval**, **Knowledge Graph reasoning**, and **Symbolic verification** to generate long-form interactive stories free of plot holes, timeline violations, and character contradictions.
 
