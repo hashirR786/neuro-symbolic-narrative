@@ -44,6 +44,10 @@ class StoryEngine:
         self.total_corrections: int = 0
         self.total_steps: int = 0
         self.consistent_steps: int = 0
+        self.temporal_ok_steps: int = 0
+        self.character_ok_steps: int = 0
+        self.inventory_ok_steps: int = 0
+        self.hallucination_total: float = 0.0
 
     # ------------------------------------------------------------------
     # Primary API
@@ -138,8 +142,35 @@ class StoryEngine:
 
         # Telemetry
         self.total_corrections += correction_attempts
+        errors = [v for v in last_violations if v.severity == "error"]
+
         if is_consistent:
             self.consistent_steps += 1
+
+        # Per-layer tracking
+        temporal_rules  = {"temporal_dead_actor", "location_mismatch"}
+        character_rules = {"dead_actor", "illegal_resurrection", "relationship_contradiction"}
+        inventory_rules = {"duplicate_ownership", "item_transfer_without_exchange", "use_without_possession"}
+
+        error_rules = {v.rule for v in errors}
+        if not error_rules & temporal_rules:
+            self.temporal_ok_steps += 1
+        if not error_rules & character_rules:
+            self.character_ok_steps += 1
+        if not error_rules & inventory_rules:
+            self.inventory_ok_steps += 1
+
+        # Hallucination: facts referencing unknown entities
+        known = {str(n).lower() for n in self.kg.graph.nodes()}
+        if final_facts:
+            hallu = sum(
+                1 for f in final_facts
+                if f.subject.lower() not in known or f.object.lower() not in known
+            ) / len(final_facts)
+        else:
+            hallu = 0.0
+        self.hallucination_total += hallu
+
         self.last_violations = last_violations
         if last_violations:
             self.violation_log.append({
@@ -167,16 +198,24 @@ class StoryEngine:
 
     def get_session_stats(self) -> Dict[str, Any]:
         kg_stats = self.kg.get_graph_stats()
-        ws = self.world_state
+        ws  = self.world_state
+        n   = max(self.total_steps, 1)
         return {
-            "total_steps": self.total_steps,
-            "consistent_steps": self.consistent_steps,
-            "consistency_rate": self.get_consistency_rate(),
+            "total_steps":       self.total_steps,
+            "consistent_steps":  self.consistent_steps,
+            "consistency_rate":  self.get_consistency_rate(),
             "total_corrections": self.total_corrections,
-            "characters": len(ws.characters),
-            "dead_characters": len(ws.get_dead_characters()),
-            "items": len(ws.items),
-            "locations": len(ws.locations),
-            "events": len(ws.events),
+            "characters":        len(ws.characters),
+            "dead_characters":   len(ws.get_dead_characters()),
+            "items":             len(ws.items),
+            "locations":         len(ws.locations),
+            "events":            len(ws.events),
+            # Per-layer scores (0-100)
+            "CS":   round(100 * self.consistent_steps   / n, 1),
+            "TCS":  round(100 * self.temporal_ok_steps  / n, 1),
+            "CCS":  round(100 * self.character_ok_steps / n, 1),
+            "ICS":  round(100 * self.inventory_ok_steps / n, 1),
+            "HR":   round(self.hallucination_total      / n, 3),
+            "RF":   round(self.total_corrections        / n, 2),
             **kg_stats,
         }

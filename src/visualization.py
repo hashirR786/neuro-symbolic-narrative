@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 
-from src.kg_manager import KGManager, _MAX_LABEL_LEN, _VALUE_WORDS
+from src.kg_manager import KGManager, _MAX_LABEL_LEN, _VALUE_WORDS, _DESC_PREFIXES
 from src.schema import ViolationReport
 
 logger = logging.getLogger(__name__)
@@ -335,16 +335,39 @@ class GraphView:
     # ------------------------------------------------------------------
 
     def _is_junk_node(self, name: str) -> bool:
-        """True if this node should be hidden from visualization."""
-        if name.lower() in _VALUE_WORDS:
+        """
+        True if this node should be hidden from visualization.
+        Acts as a second defence after the whitelist in kg_manager.
+        """
+        if not name:
             return True
+        nl = name.lower().strip()
+
+        # Exact value words
+        if nl in _VALUE_WORDS:
+            return True
+
+        # Too long → sentence fragment
         if len(name) > _MAX_LABEL_LEN:
             return True
+
+        # More than 5 words → almost certainly a sentence
         if name.count(" ") > 4:
             return True
-        # Starts lowercase and has spaces → likely a sentence fragment
-        if " " in name and name[0].islower() and len(name) > 15:
+
+        # Starts with a descriptor prefix → phrase, not entity
+        if any(nl.startswith(p) for p in _DESC_PREFIXES):
             return True
+
+        # Single lowercase word → adjective / emotion / role value
+        # (real entity names are Title Case: "Bani", "Moonlit Pages")
+        if " " not in name and name[0].islower():
+            return True
+
+        # Multi-word phrase starting lowercase and > 10 chars → description
+        if " " in name and name[0].islower() and len(name) > 10:
+            return True
+
         return False
 
     def _apply_top_n(self, g: nx.DiGraph) -> nx.DiGraph:

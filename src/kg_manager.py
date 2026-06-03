@@ -21,34 +21,35 @@ from src.schema import Fact, EventNode
 
 logger = logging.getLogger(__name__)
 
-# Relations whose object is a scalar VALUE — stored as node attribute, not a graph edge
-_SCALAR_RELATIONS: frozenset = frozenset({
-    "isalive", "alive", "isdead",
-    "health", "wounded", "injured", "healed",
-    "feels", "emotional_state", "mood",
-    "faction",
-    "goal", "wantsto", "seeks",
-    "isworried", "isworriedabo", "isworrriedabout",
-})
-
-# Relations whose object is a real ENTITY — kept as edges in the state graph
+# WHITELIST — only these relations produce entity-to-entity edges in the state graph.
+# Every other relation is stored as a node ATTRIBUTE (no edge, no value node).
 _ENTITY_RELATIONS: frozenset = frozenset({
+    # Movement / location
     "locatedin", "locatedat", "isin", "presentat", "movesto", "travels",
-    "hasitem", "owns", "carries", "pickedup", "holds", "dropped", "gave",
+    # Inventory
+    "hasitem", "owns", "carries", "pickedup", "holds", "dropped", "gave", "transfers",
+    # Interpersonal
     "friendof", "enemyof", "alliedwith", "partnerof", "marriedto",
-    "rivalof", "servantof", "masterof",
-    "attacks", "kills", "rescues", "speaks", "commands",
+    "rivalof", "servantof", "masterof", "memberof",
+    # Actions (character → character)
+    "attacks", "kills", "rescues", "speaks", "commands", "helps",
+    # Event graph
     "participatedin", "occurredat", "causes",
 })
 
-# Maximum character length for a node label to be shown in the state graph
-_MAX_LABEL_LEN: int = 30
+# Maximum character length for a node label shown in state graph
+_MAX_LABEL_LEN: int = 28
 
-# Values that look like scalar words, not entity names — filtered from state graph nodes
+# Exact strings that are clearly scalar values — never rendered as nodes
 _VALUE_WORDS: frozenset = frozenset({
     "true", "false", "yes", "no", "dead", "alive",
     "unknown", "none", "null", "0", "1",
+    "open", "closed", "locked", "unlocked",
 })
+
+# Prefixes that flag a phrase as a description, not an entity name
+_DESC_PREFIXES: tuple = ("her ", "his ", "their ", "the ", "a ", "an ",
+                          "my ", "our ", "its ")
 
 
 class KGManager:
@@ -221,10 +222,12 @@ class KGManager:
 
     def _update_state_graph(self, subject: str, obj: str, relation: str) -> None:
         """
-        Smart state graph update:
-        - Scalar relations → stored as node attributes on subject (no edge, no value node)
-        - Entity relations → stored as edges between entity nodes
-        - Long strings or value words → dropped from state graph entirely
+        Whitelist-based state graph update.
+
+        ONLY relations in _ENTITY_RELATIONS create graph edges.
+        EVERYTHING ELSE is stored as a node attribute on the subject.
+        This prevents any scalar value, adjective, emotion, or goal phrase
+        from becoming a visible node in the graph.
         """
         rel_lower = relation.lower()
 
@@ -232,26 +235,25 @@ class KGManager:
         if not self.state_graph.has_node(subject):
             self.state_graph.add_node(subject, type="entity")
 
-        # Case 1: Scalar relation → store as node attribute
-        if rel_lower in _SCALAR_RELATIONS:
+        # Case 1: NOT an entity relation → store as node attribute, never create an edge
+        if rel_lower not in _ENTITY_RELATIONS:
             self.state_graph.nodes[subject][rel_lower] = obj
             return
 
-        # Case 2: Object is a value word or too long → skip
+        # Case 2: Entity relation, but object looks like a value → store as attribute
         if self._is_value_node(obj):
-            # Still store as attribute if it looks scalar
             self.state_graph.nodes[subject][rel_lower] = obj
             return
 
-        # Case 3: Entity relation → add as edge
+        # Case 3: Genuine entity-to-entity edge
         if not self.state_graph.has_node(obj):
             self.state_graph.add_node(obj, type="entity")
 
-        # For state-type relations, remove old edge with same relation first
+        # For location relations, remove old location edge first (one location at a time)
         if rel_lower in {"locatedin", "locatedat", "isin", "movesto"}:
             old_edges = [
                 (u, v) for u, v, data in self.state_graph.out_edges(subject, data=True)
-                if data.get("relation", "").lower() == rel_lower
+                if data.get("relation", "").lower() in {"locatedin", "locatedat", "isin", "movesto"}
             ]
             self.state_graph.remove_edges_from(old_edges)
 

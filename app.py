@@ -272,39 +272,54 @@ with col_panel:
         st.markdown("### Consistency Metrics")
 
         if stats["total_steps"] == 0:
-            st.info("No story steps yet.")
+            st.info("No story steps yet — start the story to see live metrics.")
         else:
-            consistency_pct = round(100 * engine.get_consistency_rate(), 1)
-            st.metric("CS — Consistency Score", f"{consistency_pct} / 100")
-            st.progress(consistency_pct / 100)
-
-            # Live KG Consistency Score (lightweight version)
+            # ── Live KGCS (lightweight) ──────────────────────────────────
             kg_stats = engine.kg.get_graph_stats()
             kgcs = min(100.0, round(
                 100 * kg_stats["state_edges"] /
                 max(kg_stats["historical_edges"], 1), 1
             ))
-            st.metric("KGCS — KG Consistency Score", f"{kgcs} / 100")
-            st.progress(kgcs / 100)
 
-            rf = (
-                engine.total_corrections / engine.total_steps
-                if engine.total_steps > 0 else 0.0
-            )
-            st.metric("RF — Rewrite Frequency", f"{rf:.2f} corrections/step")
+            # ── Row 1: CS, KGCS, TCS, CCS ────────────────────────────────
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("CS", f"{stats['CS']}", help="Consistency Score — steps passing all checks (0–100)")
+            c2.metric("KGCS", f"{kgcs}", help="KG Consistency Score — contradiction-free graph edges (0–100)")
+            c3.metric("TCS", f"{stats['TCS']}", help="Temporal Consistency — no timeline violations (0–100)")
+            c4.metric("CCS", f"{stats['CCS']}", help="Character Consistency — state & relationship checks (0–100)")
 
+            # ── Row 2: ICS, HR, RF ────────────────────────────────────────
+            c5, c6, c7, _ = st.columns(4)
+            c5.metric("ICS", f"{stats['ICS']}", help="Inventory Consistency — ownership & transfer checks (0–100)")
+            c6.metric("HR",  f"{stats['HR']}",  help="Hallucination Rate — unknown entities per step (0–1, lower is better)")
+            c7.metric("RF",  f"{stats['RF']}",  help="Rewrite Frequency — avg corrections per step (lower is better)")
+
+            # ── Compact progress bars for the 5 scored metrics ────────────
             st.markdown("---")
-            st.markdown("**Graph health**")
-            st.write(f"Historical nodes: {kg_stats['historical_nodes']}")
-            st.write(f"Historical edges: {kg_stats['historical_edges']}")
-            st.write(f"State nodes: {kg_stats['state_nodes']}")
-            st.write(f"State edges: {kg_stats['state_edges']}")
-            st.write(f"Archived edges: {kg_stats['archived_edges']}")
-            st.write(f"Dead characters: {stats['dead_characters']}")
+            for label, val, color in [
+                ("CS",   stats["CS"],  "#3fb950"),
+                ("KGCS", kgcs,         "#388bfd"),
+                ("TCS",  stats["TCS"], "#FF9800"),
+                ("CCS",  stats["CCS"], "#bc8cff"),
+                ("ICS",  stats["ICS"], "#58a6ff"),
+            ]:
+                col_l, col_bar = st.columns([1, 4])
+                col_l.caption(label)
+                col_bar.progress(int(val) / 100)
 
-            st.info(
-                "Run `src/benchmark.py` from the terminal for full CS / KGCS / TCS / "
-                "CCS / ICS / HR / RF reports with CSV, JSON, and chart export."
+            # ── Graph health ──────────────────────────────────────────────
+            with st.expander("Graph health", expanded=False):
+                gh1, gh2 = st.columns(2)
+                gh1.caption(f"Historical nodes: **{kg_stats['historical_nodes']}**")
+                gh1.caption(f"Historical edges: **{kg_stats['historical_edges']}**")
+                gh1.caption(f"Archived edges:   **{kg_stats['archived_edges']}**")
+                gh2.caption(f"State nodes: **{kg_stats['state_nodes']}**")
+                gh2.caption(f"State edges: **{kg_stats['state_edges']}**")
+                gh2.caption(f"Dead characters: **{stats['dead_characters']}**")
+
+            st.caption(
+                "TCS / CCS / ICS / HR are per-layer breakdowns of CS. "
+                "Run `python -m tests.test_consistency --benchmark` for full offline reports."
             )
 
     # ─────────────────────────────────────────────────────────────────────────
