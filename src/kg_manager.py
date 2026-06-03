@@ -216,6 +216,64 @@ class KGManager:
             "current_step": self.current_step,
         }
 
+    def compute_kgcs(self) -> float:
+        """
+        KG Consistency Score — measures how contradiction-free the historical graph is.
+
+        For each (subject, scalar_relation) pair, walk values in step order.
+        A contradiction is an impossible reversal:
+          - isAlive: false -> true with no resurrection edge in between
+          - Any other scalar: same subject+relation has two different values at the SAME step
+
+        Returns a score from 0.0 to 100.0 (higher = more consistent).
+        """
+        _SCALAR = {"isalive", "locatedin", "locatedat", "health", "feels", "faction", "emotional_state"}
+
+        # Group (subject, relation) -> list of (step_id, object) sorted by step
+        timeline: Dict[Tuple, list] = {}
+        for u, v, data in self.graph.edges(data=True):
+            rel = data.get("relation", "").lower()
+            if rel not in _SCALAR:
+                continue
+            key = (str(u).lower(), rel)
+            timeline.setdefault(key, []).append((data.get("step_id", 0), str(v).lower()))
+
+        total = 0
+        contradictions = 0
+
+        for (subj, rel), entries in timeline.items():
+            entries.sort(key=lambda x: x[0])
+            total += len(entries)
+
+            if rel == "isalive":
+                # Detect dead->alive reversal without resurrection
+                dead_at: Optional[int] = None
+                for step, val in entries:
+                    if val in {"false", "no", "dead", "0"}:
+                        dead_at = step
+                    elif val in {"true", "yes", "alive", "1"} and dead_at is not None:
+                        # Check if a resurrection edge exists between dead_at and this step
+                        has_resurrection = any(
+                            data.get("relation", "").lower() in {"resurrectedby", "revivedby"}
+                            and dead_at <= data.get("step_id", 0) <= step
+                            for _, __, data in self.graph.out_edges(subj, data=True)
+                        )
+                        if not has_resurrection:
+                            contradictions += 1
+                        dead_at = None  # reset after resurrection accounted for
+            else:
+                # Detect same-step conflicts (two different values at the exact same step)
+                by_step: Dict[int, set] = {}
+                for step, val in entries:
+                    by_step.setdefault(step, set()).add(val)
+                for step, vals in by_step.items():
+                    if len(vals) > 1:
+                        contradictions += 1
+
+        if total == 0:
+            return 100.0
+        return round(max(0.0, 100.0 * (1 - contradictions / total)), 1)
+
     # ------------------------------------------------------------------
     # State-graph management
     # ------------------------------------------------------------------
