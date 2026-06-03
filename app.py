@@ -18,10 +18,12 @@ import os
 import streamlit as st
 
 # ── Push Streamlit Cloud secrets into os.environ so LLMManager can read them ──
-# This is a no-op in local development (secrets dict is empty there).
-for _k, _v in st.secrets.items():
-    if isinstance(_v, str):
-        os.environ.setdefault(_k, _v)
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass  # No secrets.toml in local dev — env vars come from .env instead
 
 st.set_page_config(
     page_title="Neuro-Symbolic Narrative",
@@ -274,38 +276,23 @@ with col_panel:
         if stats["total_steps"] == 0:
             st.info("No story steps yet — start the story to see live metrics.")
         else:
-            # ── Live KGCS (lightweight) ──────────────────────────────────
             kg_stats = engine.kg.get_graph_stats()
-            kgcs = min(100.0, round(
-                100 * kg_stats["state_edges"] /
-                max(kg_stats["historical_edges"], 1), 1
-            ))
+            kgcs = engine.kg.compute_kgcs()
 
-            # ── Row 1: CS, KGCS, TCS, CCS ────────────────────────────────
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("CS", f"{stats['CS']}", help="Consistency Score — steps passing all checks (0–100)")
-            c2.metric("KGCS", f"{kgcs}", help="KG Consistency Score — contradiction-free graph edges (0–100)")
-            c3.metric("TCS", f"{stats['TCS']}", help="Temporal Consistency — no timeline violations (0–100)")
-            c4.metric("CCS", f"{stats['CCS']}", help="Character Consistency — state & relationship checks (0–100)")
+            # ── Large metric display (label, value, unit, progress_val) ──
+            def _big_metric(label: str, value, unit: str = "/ 100", prog: float | None = None) -> None:
+                st.markdown(f"**{label}**")
+                st.markdown(f"<h2 style='margin:0 0 4px 0'>{value} {unit}</h2>", unsafe_allow_html=True)
+                if prog is not None:
+                    st.progress(prog)
 
-            # ── Row 2: ICS, HR, RF ────────────────────────────────────────
-            c5, c6, c7, _ = st.columns(4)
-            c5.metric("ICS", f"{stats['ICS']}", help="Inventory Consistency — ownership & transfer checks (0–100)")
-            c6.metric("HR",  f"{stats['HR']}",  help="Hallucination Rate — unknown entities per step (0–1, lower is better)")
-            c7.metric("RF",  f"{stats['RF']}",  help="Rewrite Frequency — avg corrections per step (lower is better)")
-
-            # ── Compact progress bars for the 5 scored metrics ────────────
-            st.markdown("---")
-            for label, val, color in [
-                ("CS",   stats["CS"],  "#3fb950"),
-                ("KGCS", kgcs,         "#388bfd"),
-                ("TCS",  stats["TCS"], "#FF9800"),
-                ("CCS",  stats["CCS"], "#bc8cff"),
-                ("ICS",  stats["ICS"], "#58a6ff"),
-            ]:
-                col_l, col_bar = st.columns([1, 4])
-                col_l.caption(label)
-                col_bar.progress(int(val) / 100)
+            _big_metric("CS — Consistency Score",   stats["CS"],   prog=stats["CS"] / 100)
+            _big_metric("KGCS — KG Consistency Score", kgcs,       prog=kgcs / 100)
+            _big_metric("TCS — Temporal Consistency",  stats["TCS"], prog=stats["TCS"] / 100)
+            _big_metric("CCS — Character Consistency", stats["CCS"], prog=stats["CCS"] / 100)
+            _big_metric("ICS — Inventory Consistency", stats["ICS"], prog=stats["ICS"] / 100)
+            _big_metric("HR — Hallucination Rate",  stats["HR"],  unit="(lower is better)")
+            _big_metric("RF — Rewrite Frequency",   f"{stats['RF']:.2f}", unit="corrections/step")
 
             # ── Graph health ──────────────────────────────────────────────
             with st.expander("Graph health", expanded=False):
