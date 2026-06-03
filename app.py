@@ -150,7 +150,7 @@ with col_panel:
             with c2:
                 top_n = st.selectbox(
                     "Top N nodes",
-                    options=[0, 20, 50, 100],
+                    options=[20, 50, 100, 0],
                     index=0,
                     format_func=lambda x: "All" if x == 0 else str(x),
                 )
