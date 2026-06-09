@@ -26,6 +26,7 @@ ENV/
 
 # Reports & benchmark output
 reports/
+report/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -52,3 +53,12 @@ models/
 # Logs
 *.log
 logs/
+
+# Frontend — build artifacts and local env
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Backend — compiled bytecode
+backend/__pycache__/
+backend/**/__pycache__/
